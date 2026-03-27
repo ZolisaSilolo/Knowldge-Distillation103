@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.eggs/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data & Outputs (large files)
+data/processed/
+data/raw/
+outputs/
+*.tar.gz
+*.gguf
+
+# ML artifacts
+*.pt
+*.bin
+*.safetensors
+wandb/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+/tmp/
+*.log

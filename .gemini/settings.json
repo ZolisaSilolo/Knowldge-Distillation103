@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "arxiv": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@fre4x/arxiv"
+      ]
+    },
+    "colab-mcp": {
+      "command": "uvx",
+      "args": [
+        "git+https://github.com/googlecolab/colab-mcp"
+      ]
+    }
+  }
+}

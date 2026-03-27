@@ -1,0 +1,53 @@
+{
+  "Description": "ClinIQ Pipeline - S3 PutObject triggers for checkpoint and metrics uploads",
+  "Rules": [
+    {
+      "Name": "cliniq-checkpoint-uploaded",
+      "Description": "Triggers when a training checkpoint is uploaded to S3",
+      "EventPattern": {
+        "source": ["aws.s3"],
+        "detail-type": ["Object Created"],
+        "detail": {
+          "bucket": {
+            "name": ["cliniq-distillation"]
+          },
+          "object": {
+            "key": [{"prefix": "checkpoints/"}]
+          }
+        }
+      },
+      "Targets": [
+        {
+          "Id": "notify-lambda",
+          "Arn": "arn:aws:lambda:us-east-1:ACCOUNT_ID:function:cliniq-notify"
+        }
+      ]
+    },
+    {
+      "Name": "cliniq-metrics-uploaded",
+      "Description": "Triggers when evaluation metrics are uploaded (used by compare_models)",
+      "EventPattern": {
+        "source": ["aws.s3"],
+        "detail-type": ["Object Created"],
+        "detail": {
+          "bucket": {
+            "name": ["cliniq-distillation"]
+          },
+          "object": {
+            "key": [{"prefix": "metrics/stage_a/"}]
+          }
+        }
+      },
+      "Targets": [
+        {
+          "Id": "compare-models-lambda",
+          "Arn": "arn:aws:lambda:us-east-1:ACCOUNT_ID:function:cliniq-compare-models"
+        },
+        {
+          "Id": "notify-lambda",
+          "Arn": "arn:aws:lambda:us-east-1:ACCOUNT_ID:function:cliniq-notify"
+        }
+      ]
+    }
+  ]
+}

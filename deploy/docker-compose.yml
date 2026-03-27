@@ -1,0 +1,50 @@
+# ClinIQ — Docker Compose Deployment
+# Runs Ollama + FastAPI in a single stack for easy clinic deployment.
+#
+# Usage:
+#   docker compose up -d
+#   curl http://localhost:8000/health
+
+version: "3.8"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cliniq-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  cliniq-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: cliniq-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - CLINIQ_MODEL=cliniq
+      - SERVE_HOST=0.0.0.0
+      - SERVE_PORT=8000
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  ollama-data:
+    driver: local

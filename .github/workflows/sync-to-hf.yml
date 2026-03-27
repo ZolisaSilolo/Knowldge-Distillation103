@@ -1,0 +1,22 @@
+name: Sync to Hugging Face
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git push https://user:${HF_TOKEN}@huggingface.co/Zolisa/cliniq-model main --force

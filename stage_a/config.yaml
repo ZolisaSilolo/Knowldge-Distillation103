@@ -1,0 +1,41 @@
+# Stage A — KL Logit Distillation (Raw PyTorch)
+# Student learns from teacher's soft probability distribution
+
+model:
+  teacher: "Qwen/Qwen3.5-9B"
+  teacher_adapter: null          # GGUF repo has no safetensors adapter — base model used directly
+  student: "${STUDENT_MODEL}"
+  student_adapter: "outputs/stage_b/final_adapter"
+  max_seq_length: 2048
+
+distillation:
+  temperature: 2.0         # Softmax temperature for KL divergence
+  alpha: 0.5               # Weight: alpha * KL_loss + (1-alpha) * CE_loss
+  epochs: 3
+  learning_rate: 1.0e-4
+  per_device_batch_size: 1  # VRAM safety: T4 has 15GB limit
+  gradient_accumulation_steps: 16  # Effective batch = 16
+  max_grad_norm: 1.0
+  weight_decay: 0.01
+  warmup_steps: 50
+
+# VRAM Safety Settings (critical for T4 15GB)
+vram_safety:
+  gradient_checkpointing: true     # torch.utils.checkpoint
+  use_8bit_optimizer: true         # bitsandbytes 8-bit AdamW
+  teacher_in_eval_mode: true       # Freeze teacher, no gradients stored
+  empty_cache_frequency: 10        # torch.cuda.empty_cache() every N steps
+  mixed_precision: true            # AMP autocast
+
+data:
+  train_path: "data/processed/train.jsonl"
+  eval_path: "data/processed/eval.jsonl"
+  max_length: 2048
+
+output:
+  dir: "./outputs/stage_a"
+
+s3:
+  upload_checkpoint: true
+  cleanup_after_upload: true
+  prefix: "checkpoints"

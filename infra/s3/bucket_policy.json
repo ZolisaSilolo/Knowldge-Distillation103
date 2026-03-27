@@ -1,0 +1,49 @@
+{
+  "BucketName": "cliniq-distillation",
+  "Region": "us-east-1",
+  "VersioningConfiguration": {
+    "Status": "Suspended"
+  },
+  "NotificationConfiguration": {
+    "EventBridgeConfiguration": {}
+  },
+  "LifecycleConfiguration": {
+    "Rules": [
+      {
+        "ID": "cleanup-old-checkpoints",
+        "Status": "Enabled",
+        "Filter": {
+          "Prefix": "checkpoints/"
+        },
+        "Expiration": {
+          "Days": 30
+        },
+        "NoncurrentVersionExpiration": {
+          "NoncurrentDays": 7
+        }
+      },
+      {
+        "ID": "cleanup-old-metrics",
+        "Status": "Enabled",
+        "Filter": {
+          "Prefix": "metrics/"
+        },
+        "Expiration": {
+          "Days": 90
+        }
+      },
+      {
+        "ID": "abort-incomplete-multipart",
+        "Status": "Enabled",
+        "AbortIncompleteMultipartUpload": {
+          "DaysAfterInitiation": 1
+        }
+      }
+    ]
+  },
+  "Tags": [
+    {"Key": "Project", "Value": "ClinIQ"},
+    {"Key": "Environment", "Value": "production"},
+    {"Key": "CostCenter", "Value": "free-tier"}
+  ]
+}

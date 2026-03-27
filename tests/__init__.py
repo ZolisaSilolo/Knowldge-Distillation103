@@ -1,0 +1,3 @@
+"""
+ClinIQ — Tests Package
+"""
