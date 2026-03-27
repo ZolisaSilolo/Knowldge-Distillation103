@@ -23,6 +23,7 @@ from data.prompts.templates import (
 
 # ===== Configuration =====
 OUTPUT_DIR = Path(__file__).resolve().parent / "processed"
+REGULATIONS_DATASET = "Zolisa/cliniq-dataset"
 EVAL_SPLIT_RATIO = 0.1
 RANDOM_SEED = 42
 MAX_SAMPLES_PER_SOURCE = 2000
@@ -475,12 +476,35 @@ def load_and_filter_medical_qa() -> list[dict]:
     return examples
 
 
+def load_regulatory_data() -> list[dict]:
+    """
+    Load regulatory/compliance data from HuggingFace dataset.
+    
+    Returns:
+        list[dict]: Training examples from regulations dataset.
+    """
+    examples = []
+    try:
+        print(f"   Loading from {REGULATIONS_DATASET}...")
+        ds = load_dataset(REGULATIONS_DATASET, split="train")
+        for item in ds:
+            # Format as Q&A for training
+            query = f"Explain the key requirements of {item['source'].upper()} for healthcare data handling."
+            response = item["content"]
+            messages = format_sft_example(query, response)
+            examples.append({"messages": messages})
+        print(f"   Loaded {len(examples)} regulatory examples")
+    except Exception as e:
+        print(f"   ⚠️ Could not load regulations: {e}")
+    return examples
+
+
 def prepare_dataset():
     """
     Main data preparation pipeline.
     
-    Combines synthetic vignettes with filtered open datasets,
-    shuffles, splits into train/eval, and saves as JSONL.
+    Combines synthetic vignettes, filtered open datasets,
+    and regulatory data, then shuffles and splits into train/eval.
     """
     random.seed(RANDOM_SEED)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -499,8 +523,13 @@ def prepare_dataset():
     medical_qa = load_and_filter_medical_qa()
     print(f"   Loaded {len(medical_qa)} filtered medical QA examples")
 
-    # 3. Combine and shuffle
-    all_examples = synthetic + medical_qa
+    # 3. Load regulatory/compliance data
+    print("\n📜 Loading regulatory datasets...")
+    regulations = load_regulatory_data()
+    print(f"   Loaded {len(regulations)} regulatory examples")
+
+    # 4. Combine and shuffle
+    all_examples = synthetic + medical_qa + regulations
     random.shuffle(all_examples)
     print(f"\n📊 Total examples: {len(all_examples)}")
 
