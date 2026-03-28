@@ -1,142 +1,173 @@
 """
-fetch_external.py — Fetch medical/clinical data from arxiv, web, and official sources.
+fetch_external.py — Fetch real clinical datasets from HuggingFace Hub.
+
+Sources:
+  1. intronhealth/afrimedqa_v2       — Africa-specific medical QA (CC BY-NC-SA 4.0)
+  2. GBaker/MedQA-USMLE-4-options   — USMLE clinical vignettes (MIT)
+  3. openlifescienceai/medmcqa       — Indian medical entrance QA (MIT)
+  4. bigbio/meddialog                — Real doctor-patient dialogues (Apache 2.0)
+  5. lavita/ChatDoctor-HealthCareMagic-100k — Patient-doctor chat (research use)
 """
 
 import json
-import re
 from pathlib import Path
-from urllib.request import urlopen
-from urllib.error import URLError
+from datasets import load_dataset
 
-# ArXiv papers on medical LLM/training (title, abstract, authors)
-ARXIV_PAPERS = [
-    {
-        "title": "Distilling Large Language Models for Efficient Clinical Information Extraction",
-        "arxiv_id": "2501.00031",
-        "abstract": """Large language models (LLMs) excel at clinical information extraction but their computational demands limit practical deployment. Knowledge distillation offers a potential solution. We evaluate distilled BERT models for clinical NER tasks. We leveraged state-of-the-art LLMs (Gemini and OpenAI models) and medical ontologies (RxNorm and SNOMED) as teacher labelers for medication, disease, and symptom extraction. Distilled BERT models were up to 101x cheaper and 12x faster than state-of-the-art LLMs while achieving similar performance on NER tasks.""",
-        "authors": ["Karthik S. Vedula", "Annika Gupta", "Akshay Swaminathan"],
-    },
-    {
-        "title": "Fine-Tuning LLMs for Reliable Medical Question-Answering Services",
-        "arxiv_id": "2410.16088", 
-        "abstract": """We present an advanced approach to medical question-answering using fine-tuned Large Language Models (LLMs) to improve accuracy and reliability. Our study focuses on optimizing models like LLaMA-2 and Mistral for delivering precise, reliable medical answers.""",
-        "authors": ["Various"],
-    },
-    {
-        "title": "Medical Knowledge Distillation with LoRA",
-        "arxiv_id": "2505.00025",
-        "abstract": """We design a knowledge transfer pipeline from DeepSeek-R1-Distill-70B to DeepSeek-R1-Distill-7B using Low-Rank Adaptation (LoRA) for precise medical knowledge retention. Through 4-bit quantization and mixed-precision strategies, we achieve substantial model compression while preserving medical reasoning capabilities.""",
-        "authors": ["Various"],
-    },
+OUTPUT_DIR = Path(__file__).resolve().parent / "processed"
+MAX_PER_SOURCE = 2000
+
+CLINICAL_KEYWORDS = [
+    "fever", "cough", "pain", "infection", "pregnant", "child", "infant",
+    "hiv", "tb", "tuberculosis", "malaria", "diarrhea", "diarrhoea",
+    "bleeding", "breathing", "vomit", "rash", "wound", "diabetes",
+    "hypertension", "anemia", "anaemia", "referral", "emergency", "urgent",
 ]
 
-# SA Government Health content
-SA_HEALTH_CONTENT = {
-    "national_health_act": """National Health Act 2003 (South Africa)
-Provides framework for structured and uniform health system.
-Key provisions:
-- National, provincial, municipal health departments
-- Public health services must provide access
-- Private sector regulation
-- Health research requirements
-- Patient rights in public facilities
-- Emergency medical services must be provided
-- Health establishments must be registered""",
-    
-    "stg_adult": """South Africa Adult Standard Treatment Guidelines
-Key conditions and treatments:
-- Hypertension: Start ACE inhibitor, beta-blocker, or calcium channel blocker. Target BP <140/90
-- Diabetes: Metformin first line, target HbA1c <7%
-- TB: 6-month rifampicin/isoniazid/pyrazinamide/ethambutol regimen
-- HIV: Start ART regardless of CD4 count. First line: TDF + 3TC + DTG
-- Pneumonia: Amoxicillin or doxycycline for mild, IV antibiotics for severe
-- Asthma: Salbutamol PRN + inhaled corticosteroid for control""",
-    
-    "stg_paediatric": """South Africa Paediatric Standard Treatment Guidelines (IMCI)
-Key protocols:
-- Diarrhoea: ORS + zinc, IV fluids if severe dehydration
-- Pneumonia: Amoxicillin for fast breathing, IV antibiotics for severe
-- Fever: Paracetamol 15mg/kg, identify cause
-- Malnutrition: F-75/F-100 therapeutic feeds, vitamin A
-- TB: Isoniazid preventive therapy for children <5 exposed
-- HIV: Test at 6 weeks, start ART if positive""",
-    
-    "referral_policy": """South African Health Services Referral Policy
-Referral criteria:
-- Emergency: Immediate transfer to higher level of care
-- Urgent: Transfer within 24 hours
-- Routine: Book appointment at higher facility
-Levels of care:
-- Level 1: District hospitals
-- Level 2: Regional hospitals  
-- Level 3: Tertiary/quaternary hospitals
-- Specialised: TB, psychiatric, rehabilitation facilities""",
-}
+
+def is_relevant(text: str) -> bool:
+    t = text.lower()
+    return any(kw in t for kw in CLINICAL_KEYWORDS)
 
 
-def create_training_examples():
-    """Create training examples from external sources."""
-    examples = []
-    
-    # ArXiv examples
-    for paper in ARXIV_PAPERS:
-        query = f"Explain the key findings and methodology from the paper '{paper['title']}'"
-        response = f"""Title: {paper['title']}
-ArXiv ID: {paper['arxiv_id']}
+def to_messages(query: str, response: str) -> dict:
+    return {"messages": [
+        {"role": "user", "content": query.strip()},
+        {"role": "assistant", "content": response.strip()},
+    ]}
 
-Abstract: {paper['abstract']}
 
-Key Findings:
-- Knowledge distillation enables efficient clinical AI deployment
-- Distilled models achieve 80-90% of teacher model performance
-- Significant cost and speed improvements (up to 101x cheaper, 12x faster)
-- Applicable to NER, QA, and medical reasoning tasks
+def fetch_afrimedqa() -> list[dict]:
+    """Africa-specific medical QA — most relevant to ClinIQ's target context."""
+    print("  📥 AfriMedQA v2 (intronhealth/afrimedqa_v2)...")
+    try:
+        ds = load_dataset("intronhealth/afrimedqa_v2", split="train", trust_remote_code=True)
+        examples = []
+        for item in ds:
+            q = item.get("question", "")
+            a = item.get("answer", item.get("explanation", ""))
+            if q and a:
+                examples.append(to_messages(q, a))
+            if len(examples) >= MAX_PER_SOURCE:
+                break
+        print(f"     ✅ {len(examples)} examples")
+        return examples
+    except Exception as e:
+        print(f"     ⚠️ Failed: {e}")
+        return []
 
-Clinical Relevance:
-- Enables deployment of AI in resource-constrained settings
-- Maintains accuracy while reducing computational requirements
-- Suitable for offline/edge deployment in healthcare facilities"""
-        
-        examples.append({
-            "source": f"arxiv_{paper['arxiv_id']}",
-            "query": query,
-            "response": response
-        })
-    
-    # SA Health examples
-    for key, content in SA_HEALTH_CONTENT.items():
-        query = f"Explain the key protocols from the South African {key.replace('_', ' ')}"
-        examples.append({
-            "source": f"sa_health_{key}",
-            "query": query,
-            "response": content
-        })
-    
-    return examples
+
+def fetch_medqa_usmle() -> list[dict]:
+    """USMLE clinical vignettes — high-quality structured case presentations."""
+    print("  📥 MedQA-USMLE (GBaker/MedQA-USMLE-4-options)...")
+    try:
+        ds = load_dataset("GBaker/MedQA-USMLE-4-options", split="train", trust_remote_code=True)
+        examples = []
+        for item in ds:
+            q = item.get("question", "")
+            # Build answer from options + correct answer
+            options = item.get("options", {})
+            answer_key = item.get("answer_idx", item.get("answer", ""))
+            answer_text = options.get(answer_key, answer_key) if isinstance(options, dict) else str(answer_key)
+            if q and answer_text and is_relevant(q):
+                full_answer = f"Answer: {answer_text}"
+                if isinstance(options, dict):
+                    opts = "\n".join(f"  {k}: {v}" for k, v in options.items())
+                    full_answer = f"Options:\n{opts}\n\nCorrect Answer: {answer_text}"
+                examples.append(to_messages(q, full_answer))
+            if len(examples) >= MAX_PER_SOURCE:
+                break
+        print(f"     ✅ {len(examples)} examples")
+        return examples
+    except Exception as e:
+        print(f"     ⚠️ Failed: {e}")
+        return []
+
+
+def fetch_medmcqa() -> list[dict]:
+    """Indian medical entrance QA — broad primary care coverage."""
+    print("  📥 MedMCQA (openlifescienceai/medmcqa)...")
+    try:
+        ds = load_dataset("openlifescienceai/medmcqa", split="train", trust_remote_code=True)
+        option_map = {0: "opa", 1: "opb", 2: "opc", 3: "opd"}
+        examples = []
+        for item in ds:
+            q = item.get("question", "")
+            correct_idx = item.get("cop", 0)
+            correct_key = option_map.get(correct_idx, "opa")
+            answer = item.get(correct_key, "")
+            explanation = item.get("exp", "")
+            if q and answer and is_relevant(q):
+                response = answer
+                if explanation:
+                    response = f"{answer}\n\nExplanation: {explanation}"
+                examples.append(to_messages(q, response))
+            if len(examples) >= MAX_PER_SOURCE:
+                break
+        print(f"     ✅ {len(examples)} examples")
+        return examples
+    except Exception as e:
+        print(f"     ⚠️ Failed: {e}")
+        return []
+
+
+def fetch_meddialog() -> list[dict]:
+    """Real doctor-patient dialogues from HealthCareMagic and iCliniq."""
+    print("  📥 MedDialog (bigbio/meddialog)...")
+    try:
+        ds = load_dataset("bigbio/meddialog", "meddialog_en_bigbio_qa", split="train", trust_remote_code=True)
+        examples = []
+        for item in ds:
+            q = item.get("question", "")
+            a = " ".join(item.get("answer", [])) if isinstance(item.get("answer"), list) else item.get("answer", "")
+            if q and a and is_relevant(q):
+                examples.append(to_messages(q, a))
+            if len(examples) >= MAX_PER_SOURCE:
+                break
+        print(f"     ✅ {len(examples)} examples")
+        return examples
+    except Exception as e:
+        print(f"     ⚠️ Failed: {e}")
+        return []
+
+
+def fetch_healthcaremagic() -> list[dict]:
+    """Patient-doctor chat from HealthCareMagic — broad primary care."""
+    print("  📥 ChatDoctor-HealthCareMagic (lavita/ChatDoctor-HealthCareMagic-100k)...")
+    try:
+        ds = load_dataset("lavita/ChatDoctor-HealthCareMagic-100k", split="train", trust_remote_code=True)
+        examples = []
+        for item in ds:
+            q = item.get("instruction", item.get("input", ""))
+            a = item.get("output", item.get("response", ""))
+            if q and a and is_relevant(q):
+                examples.append(to_messages(q, a))
+            if len(examples) >= MAX_PER_SOURCE:
+                break
+        print(f"     ✅ {len(examples)} examples")
+        return examples
+    except Exception as e:
+        print(f"     ⚠️ Failed: {e}")
+        return []
 
 
 def main():
-    output_dir = Path(__file__).parent / "processed"
-    output_dir.mkdir(exist_ok=True)
-    
-    # Create training examples
-    examples = create_training_examples()
-    
-    # Save as JSONL
-    output_path = output_dir / "external_data.jsonl"
-    with open(output_path, "w") as f:
-        for ex in examples:
-            f.write(json.dumps(ex) + "\n")
-    
-    print(f"✅ Created {len(examples)} external data examples")
-    print(f"   Saved to {output_path}")
-    
-    # Summary
-    print("\n📊 Data sources included:")
-    print(f"   - ArXiv papers: {len(ARXIV_PAPERS)}")
-    print(f"   - SA Health docs: {len(SA_HEALTH_CONTENT)}")
-    
-    return examples
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print("🌐 Fetching real clinical datasets...\n")
+
+    all_examples = []
+    all_examples += fetch_afrimedqa()
+    all_examples += fetch_medqa_usmle()
+    all_examples += fetch_medmcqa()
+    all_examples += fetch_meddialog()
+    all_examples += fetch_healthcaremagic()
+
+    output_path = OUTPUT_DIR / "external_data.jsonl"
+    with open(output_path, "w", encoding="utf-8") as f:
+        for ex in all_examples:
+            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+
+    print(f"\n✅ Total: {len(all_examples)} examples → {output_path}")
+    return all_examples
 
 
 if __name__ == "__main__":

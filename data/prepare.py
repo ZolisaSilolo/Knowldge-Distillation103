@@ -543,8 +543,13 @@ def prepare_dataset():
     regulations = load_regulatory_data()
     print(f"   Loaded {len(regulations)} regulatory examples")
 
-    # 4. Load external data (arxiv, SA health docs)
+    # 4. Load external data — auto-fetch if not yet generated
     print("\n🌐 Loading external data...")
+    external_path = OUTPUT_DIR / EXTERNAL_DATA_FILE
+    if not external_path.exists():
+        print("   external_data.jsonl not found — fetching now...")
+        from data.fetch_external import main as _fetch_external
+        _fetch_external()
     external = load_external_data()
     print(f"   Loaded {len(external)} external examples")
 
