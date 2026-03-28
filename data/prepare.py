@@ -24,6 +24,7 @@ from data.prompts.templates import (
 # ===== Configuration =====
 OUTPUT_DIR = Path(__file__).resolve().parent / "processed"
 REGULATIONS_DATASET = "Zolisa/cliniq-dataset"
+EXTERNAL_DATA_FILE = "external_data.jsonl"
 EVAL_SPLIT_RATIO = 0.1
 RANDOM_SEED = 42
 MAX_SAMPLES_PER_SOURCE = 2000
@@ -479,16 +480,12 @@ def load_and_filter_medical_qa() -> list[dict]:
 def load_regulatory_data() -> list[dict]:
     """
     Load regulatory/compliance data from HuggingFace dataset.
-    
-    Returns:
-        list[dict]: Training examples from regulations dataset.
     """
     examples = []
     try:
         print(f"   Loading from {REGULATIONS_DATASET}...")
         ds = load_dataset(REGULATIONS_DATASET, split="train")
         for item in ds:
-            # Format as Q&A for training
             query = f"Explain the key requirements of {item['source'].upper()} for healthcare data handling."
             response = item["content"]
             messages = format_sft_example(query, response)
@@ -496,6 +493,24 @@ def load_regulatory_data() -> list[dict]:
         print(f"   Loaded {len(examples)} regulatory examples")
     except Exception as e:
         print(f"   ⚠️ Could not load regulations: {e}")
+    return examples
+
+
+def load_external_data() -> list[dict]:
+    """
+    Load external data (arxiv, SA health docs) from local file.
+    """
+    examples = []
+    external_path = OUTPUT_DIR / EXTERNAL_DATA_FILE
+    if external_path.exists():
+        with open(external_path) as f:
+            for line in f:
+                item = json.loads(line)
+                messages = format_sft_example(item["query"], item["response"])
+                examples.append({"messages": messages})
+        print(f"   Loaded {len(examples)} external data examples")
+    else:
+        print(f"   ⚠️ External data file not found: {external_path}")
     return examples
 
 
@@ -528,8 +543,13 @@ def prepare_dataset():
     regulations = load_regulatory_data()
     print(f"   Loaded {len(regulations)} regulatory examples")
 
-    # 4. Combine and shuffle
-    all_examples = synthetic + medical_qa + regulations
+    # 4. Load external data (arxiv, SA health docs)
+    print("\n🌐 Loading external data...")
+    external = load_external_data()
+    print(f"   Loaded {len(external)} external examples")
+
+    # 5. Combine and shuffle
+    all_examples = synthetic + medical_qa + regulations + external
     random.shuffle(all_examples)
     print(f"\n📊 Total examples: {len(all_examples)}")
 
