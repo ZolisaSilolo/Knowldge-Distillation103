@@ -16,7 +16,8 @@ jobs:
       - name: Push to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
-          git push https://user:${HF_TOKEN}@huggingface.co/Zolisa/cliniq-model main --force
+          git push https://user:${HF_TOKEN}@huggingface.co/${HF_REPO_ID} main --force
