@@ -452,7 +452,6 @@ def load_and_filter_medical_qa() -> list[dict]:
         dataset = load_dataset(
             "lavita/ChatDoctor-HealthCareMagic-100k",
             split="train",
-            trust_remote_code=True,
         )
 
         count = 0
@@ -478,18 +477,19 @@ def load_and_filter_medical_qa() -> list[dict]:
 
 
 def load_regulatory_data() -> list[dict]:
-    """
-    Load regulatory/compliance data from HuggingFace dataset.
-    """
+    """Load regulatory/compliance data from local processed file."""
     examples = []
+    local_path = OUTPUT_DIR / "regulations.jsonl"
+    if not local_path.exists():
+        print(f"   ⚠️ regulations.jsonl not found — run fetch_regulations.py first")
+        return examples
     try:
-        print(f"   Loading from {REGULATIONS_DATASET}...")
-        ds = load_dataset(REGULATIONS_DATASET, split="train")
-        for item in ds:
-            query = f"Explain the key requirements of {item['source'].upper()} for healthcare data handling."
-            response = item["content"]
-            messages = format_sft_example(query, response)
-            examples.append({"messages": messages})
+        with open(local_path) as f:
+            for item in f:
+                item = json.loads(item)
+                query = f"Explain the key requirements of {item['name']} for healthcare data handling."
+                messages = format_sft_example(query, item["content"])
+                examples.append({"messages": messages})
         print(f"   Loaded {len(examples)} regulatory examples")
     except Exception as e:
         print(f"   ⚠️ Could not load regulations: {e}")
@@ -497,17 +497,18 @@ def load_regulatory_data() -> list[dict]:
 
 
 def load_external_data() -> list[dict]:
-    """
-    Load external data (arxiv, SA health docs) from local file.
-    """
+    """Load external data from local file."""
     examples = []
     external_path = OUTPUT_DIR / EXTERNAL_DATA_FILE
     if external_path.exists():
         with open(external_path) as f:
             for line in f:
                 item = json.loads(line)
-                messages = format_sft_example(item["query"], item["response"])
-                examples.append({"messages": messages})
+                # fetch_external.py already outputs {"messages": [...]} format
+                if "messages" in item:
+                    examples.append(item)
+                elif "query" in item and "response" in item:
+                    examples.append({"messages": format_sft_example(item["query"], item["response"])})
         print(f"   Loaded {len(examples)} external data examples")
     else:
         print(f"   ⚠️ External data file not found: {external_path}")

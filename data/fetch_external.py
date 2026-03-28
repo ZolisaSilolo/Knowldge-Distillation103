@@ -40,7 +40,7 @@ def fetch_afrimedqa() -> list[dict]:
     """Africa-specific medical QA — most relevant to ClinIQ's target context."""
     print("  📥 AfriMedQA v2 (intronhealth/afrimedqa_v2)...")
     try:
-        ds = load_dataset("intronhealth/afrimedqa_v2", split="train", trust_remote_code=True)
+        ds = load_dataset("intronhealth/afrimedqa_v2", split="train")
         examples = []
         for item in ds:
             q = item.get("question", "")
@@ -60,7 +60,7 @@ def fetch_medqa_usmle() -> list[dict]:
     """USMLE clinical vignettes — high-quality structured case presentations."""
     print("  📥 MedQA-USMLE (GBaker/MedQA-USMLE-4-options)...")
     try:
-        ds = load_dataset("GBaker/MedQA-USMLE-4-options", split="train", trust_remote_code=True)
+        ds = load_dataset("GBaker/MedQA-USMLE-4-options", split="train")
         examples = []
         for item in ds:
             q = item.get("question", "")
@@ -87,7 +87,7 @@ def fetch_medmcqa() -> list[dict]:
     """Indian medical entrance QA — broad primary care coverage."""
     print("  📥 MedMCQA (openlifescienceai/medmcqa)...")
     try:
-        ds = load_dataset("openlifescienceai/medmcqa", split="train", trust_remote_code=True)
+        ds = load_dataset("openlifescienceai/medmcqa", split="train")
         option_map = {0: "opa", 1: "opb", 2: "opc", 3: "opd"}
         examples = []
         for item in ds:
@@ -114,7 +114,7 @@ def fetch_meddialog() -> list[dict]:
     """Real doctor-patient dialogues from HealthCareMagic and iCliniq."""
     print("  📥 MedDialog (bigbio/meddialog)...")
     try:
-        ds = load_dataset("bigbio/meddialog", "meddialog_en_bigbio_qa", split="train", trust_remote_code=True)
+        ds = load_dataset("bigbio/meddialog", "meddialog_en_bigbio_qa", split="train")
         examples = []
         for item in ds:
             q = item.get("question", "")
@@ -134,7 +134,7 @@ def fetch_healthcaremagic() -> list[dict]:
     """Patient-doctor chat from HealthCareMagic — broad primary care."""
     print("  📥 ChatDoctor-HealthCareMagic (lavita/ChatDoctor-HealthCareMagic-100k)...")
     try:
-        ds = load_dataset("lavita/ChatDoctor-HealthCareMagic-100k", split="train", trust_remote_code=True)
+        ds = load_dataset("lavita/ChatDoctor-HealthCareMagic-100k", split="train")
         examples = []
         for item in ds:
             q = item.get("instruction", item.get("input", ""))
