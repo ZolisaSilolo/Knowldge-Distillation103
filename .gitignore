@@ -7,8 +7,10 @@ dist/
 build/
 .eggs/
 
-# Environment
+# Environment — NEVER commit secrets
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 env/
