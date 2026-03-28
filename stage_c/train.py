@@ -129,7 +129,7 @@ def train(dry_run: bool = False):
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             args=training_args,
-            max_seq_length=data_cfg["max_length"],
+            packing=False,
         )
 
         # 6. Train

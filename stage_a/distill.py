@@ -200,6 +200,7 @@ def distill(dry_run: bool = False):
             tokenizer=tokenizer,
             max_length=data_cfg["max_length"],
         )
+        train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 
         train_loader = DataLoader(
             train_dataset,
@@ -209,6 +210,9 @@ def distill(dry_run: bool = False):
         )
 
         # ===== 4. Setup Optimizer (8-bit for VRAM safety) =====
+        grad_accum_steps = distill_cfg["gradient_accumulation_steps"]
+        cache_freq = vram_cfg["empty_cache_frequency"]
+
         if vram_cfg["use_8bit_optimizer"]:
             import bitsandbytes as bnb
             optimizer = bnb.optim.AdamW8bit(
@@ -224,12 +228,17 @@ def distill(dry_run: bool = False):
                 weight_decay=distill_cfg["weight_decay"],
             )
 
-        # ===== 5. Learning rate scheduler =====
-        total_steps = len(train_loader) * distill_cfg["epochs"]
+        # ===== 5. Learning rate scheduler with linear warmup =====
+        total_steps = (len(train_loader) // grad_accum_steps) * distill_cfg["epochs"]
         warmup_steps = distill_cfg["warmup_steps"]
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=total_steps - warmup_steps
-        )
+
+        def lr_lambda(step):
+            if step < warmup_steps:
+                return step / max(warmup_steps, 1)
+            progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
+            return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
         # ===== 6. Distillation Loss =====
         criterion = DistillationLoss(
@@ -240,8 +249,6 @@ def distill(dry_run: bool = False):
         # ===== 7. Training Loop =====
         print(f"\n🚀 Starting distillation ({distill_cfg['epochs']} epochs)...")
         scaler = torch.amp.GradScaler("cuda") if vram_cfg["mixed_precision"] else None
-        grad_accum_steps = distill_cfg["gradient_accumulation_steps"]
-        cache_freq = vram_cfg["empty_cache_frequency"]
         global_step = 0
 
         for epoch in range(distill_cfg["epochs"]):
@@ -304,8 +311,7 @@ def distill(dry_run: bool = False):
                         optimizer.step()
 
                     optimizer.zero_grad()
-                    if global_step >= warmup_steps:
-                        scheduler.step()
+                    scheduler.step()
                     global_step += 1
 
                 epoch_loss += loss.item() * grad_accum_steps
@@ -330,7 +336,34 @@ def distill(dry_run: bool = False):
             avg_loss = epoch_loss / max(num_batches, 1)
             print(f"\n📊 Epoch {epoch+1} — Avg Loss: {avg_loss:.4f}")
 
-        # ===== 8. Save final distilled student =====
+        # ===== 8. Eval loop (required for Lambda compare_models) =====
+        print("\n📊 Running eval loop...")
+        student_model.eval()
+        eval_dataset = load_distillation_dataset(
+            data_path=str(PROJECT_ROOT / data_cfg["eval_path"]),
+            tokenizer=tokenizer,
+            max_length=data_cfg["max_length"],
+        )
+        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
+        eval_loader = DataLoader(eval_dataset, batch_size=distill_cfg["per_device_batch_size"], shuffle=False)
+        eval_loss_total = 0.0
+        eval_batches = 0
+        with torch.no_grad():
+            for batch in eval_loader:
+                input_ids = batch["input_ids"].to(device)
+                attention_mask = batch["attention_mask"].to(device)
+                labels = batch["labels"].to(device)
+                with torch.amp.autocast("cuda", enabled=vram_cfg["mixed_precision"]):
+                    t_out = teacher_model(input_ids=input_ids, attention_mask=attention_mask)
+                    s_out = student_model(input_ids=input_ids, attention_mask=attention_mask)
+                    min_vocab = min(s_out.logits.size(-1), t_out.logits.size(-1))
+                    loss = criterion(s_out.logits[..., :min_vocab], t_out.logits[..., :min_vocab], labels)
+                eval_loss_total += loss.item()
+                eval_batches += 1
+        eval_loss = eval_loss_total / max(eval_batches, 1)
+        print(f"   Eval Loss: {eval_loss:.4f}")
+
+        # ===== 9. Save final distilled student =====
         output_dir = Path(PROJECT_ROOT / output_cfg["dir"])
         final_dir = output_dir / "final_adapter"
         final_dir.mkdir(parents=True, exist_ok=True)
@@ -342,7 +375,8 @@ def distill(dry_run: bool = False):
         # ===== 9. Upload to S3 =====
         metrics = {
             "stage": STAGE_NAME,
-            "final_loss": avg_loss,
+            "eval_loss": eval_loss,
+            "train_loss": avg_loss,
             "temperature": distill_cfg["temperature"],
             "alpha": distill_cfg["alpha"],
             "epochs": distill_cfg["epochs"],

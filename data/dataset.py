@@ -63,8 +63,10 @@ def load_sft_dataset(
             return_tensors="pt",
         )
 
-        # For SFT, labels = input_ids (causal LM objective)
-        encodings["labels"] = encodings["input_ids"].clone()
+        # For SFT, labels = input_ids with padding masked out
+        labels = encodings["input_ids"].clone()
+        labels[labels == tokenizer.pad_token_id] = -100
+        encodings["labels"] = labels
 
         # Flatten from batch dim
         return {k: v.squeeze(0) for k, v in encodings.items()}
@@ -125,7 +127,9 @@ def load_distillation_dataset(
         )
 
         result = {k: v.squeeze(0) for k, v in encodings.items()}
-        result["labels"] = result["input_ids"].clone()
+        labels = result["input_ids"].clone()
+        labels[labels == tokenizer.pad_token_id] = -100
+        result["labels"] = labels
 
         # Preserve teacher logits path if available
         if "teacher_logits_path" in example and example["teacher_logits_path"]:
