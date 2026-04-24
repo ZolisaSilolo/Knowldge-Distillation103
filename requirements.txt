@@ -32,7 +32,7 @@ requests>=2.31.0
 urllib3>=2.6.3
 
 # ===== Dev / Testing =====
-pytest>=7.4.0
+pytest>=9.0.3
 moto[s3]>=4.2.0
 python-dotenv>=1.0.0
 
